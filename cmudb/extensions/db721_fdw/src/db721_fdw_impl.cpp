@@ -12,6 +12,7 @@ extern "C" {
 #include "../../../../src/include/foreign/foreign.h"
 #include "../../../../src/include/optimizer/pathnode.h"
 #include "../../../../src/include/optimizer/planmain.h"
+#include "../../../../src/include/utils/builtins.h"
 
 }
 // clang-format on
@@ -51,7 +52,7 @@ extern "C" void db721_GetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
         filename = strVal(def->arg);
       }
   }
-  elog(LOG, "filename: %s", filename);
+  
   file = fopen(filename, "rb");
   // Seek to the end of the file
   fseek(file, -4, SEEK_END);
@@ -89,7 +90,6 @@ extern "C" void db721_GetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
   for (int i = 1; i < r; i++) {
     if (jsoneq(new_buffer, &t[i], "Table") == 0) {
       /* We may use strndup() to fetch string value */
-      elog(LOG, "Table:");
       elog(LOG, "- Table: %.*s\n", t[i + 1].end - t[i + 1].start,
              new_buffer + t[i + 1].start);
       i++;
@@ -123,8 +123,9 @@ db721_GetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid,
 }
 
 extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
-  num_rows_to_read = 10; // Example: Set num_rows_to_read to 10
+  num_rows_to_read = 6;
   rows_read = 0;
+  elog(LOG, "filename: %s", filename);
   elog(LOG, "totalRows: %i", num_rows_to_read);
 }
 
@@ -137,14 +138,35 @@ extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
     return NULL;
   }
   else {
+    FILE *file;
+    file = fopen(filename, "rb");
+    char buffer_1[32];
+    float floatValue_2;
+    float floatValue_3;
+    fseek(file, 32 * rows_read, SEEK_SET);
+    fread(buffer_1, 1, sizeof(buffer_1) - 1, file);
+    elog(LOG, "value: %s", buffer_1);
     ExecClearTuple(slot);
-    slot->tts_values[0] = CStringGetDatum("col1");
+    slot->tts_values[0] = CStringGetTextDatum(buffer_1);
     slot->tts_isnull[0] = false;
-    slot->tts_values[1] = (Datum)-999.0;
-    slot->tts_isnull[1] = true;
-    slot->tts_values[2] =(Datum)-888.0;
+
+
+
+
+    fseek(file, 192 + 4 * rows_read, SEEK_SET);
+    fread(&floatValue_2, 1, sizeof(float), file);
+    elog(LOG, "value: %f", floatValue_2);
+    slot->tts_values[1] = Float4GetDatum(floatValue_2);
+    slot->tts_isnull[1] = false;
+
+
+    fseek(file, 216 + 4 * rows_read, SEEK_SET);
+    fread(&floatValue_3, 1, sizeof(float), file);
+    elog(LOG, "value: %f", floatValue_3);
+    slot->tts_values[2] =Float4GetDatum(floatValue_3);
     slot->tts_isnull[2] = false;
-    // node->ss.ss_currentScanDesc++;
+    
+    
     ExecStoreVirtualTuple(slot);
     elog(LOG, "Returning row %i/%i", rows_read, num_rows_to_read);
     rows_read++;
