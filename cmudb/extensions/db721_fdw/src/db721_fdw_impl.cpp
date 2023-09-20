@@ -46,20 +46,20 @@ static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
 char* readKBytes(const char* filename, long k, long offset, int fromEnd) {
     // Open the file in binary mode for reading
     FILE* file = fopen(filename, "rb");
-    if (file == NULL) {
-        elog(LOG, "Error opening file");
-        return NULL;
-    }
+    // if (file == NULL) {
+    //     elog(LOG, "Error opening file");
+    //     return NULL;
+    // }
 
     // Determine the total size of the file
     fseek(file, 0, SEEK_END); // Move to the end of the file
     long file_size = ftell(file); // Get the file size
-    elog(LOG, "File size: %ld", file_size);
-    if (file_size == -1) {
-        elog(LOG, "Error getting file size");
-        fclose(file);
-        return NULL;
-    }
+    // elog(LOG, "File size: %ld", file_size);
+    // if (file_size == -1) {
+    //     elog(LOG, "Error getting file size");
+    //     fclose(file);
+    //     return NULL;
+    // }
 
     // Calculate the position to read from
     long position;
@@ -76,7 +76,7 @@ char* readKBytes(const char* filename, long k, long offset, int fromEnd) {
             position = file_size; // Ensure we don't seek beyond the end of the file
         }
     }
-     elog(LOG, "Position: %ld, Offset: %ld", position, offset);
+    // elog(LOG, "Position: %ld, Offset: %ld", position, offset);
 
     // Seek to the desired position
     fseek(file, position, SEEK_SET);
@@ -84,7 +84,7 @@ char* readKBytes(const char* filename, long k, long offset, int fromEnd) {
     // Allocate memory for the buffer
     char* buffer = (char*)malloc(k);
     if (buffer == NULL) {
-        elog(LOG, "Error allocating memory");
+        // elog(LOG, "Error allocating memory");
         fclose(file);
         return NULL;
     }
@@ -92,7 +92,7 @@ char* readKBytes(const char* filename, long k, long offset, int fromEnd) {
     // Read K bytes into the buffer
     size_t bytes_read = fread(buffer, 1, k, file);
     if (bytes_read == 0) {
-        elog(LOG, "Error reading file");
+        // elog(LOG, "Error reading file");
         free(buffer);
         fclose(file);
         return NULL;
@@ -110,17 +110,17 @@ int json_print_tokens(const char* json) {
     jsmn_init(&parser);
 
     // Parse the JSON string into tokens
-    int num_tokens = jsmn_parse(&parser, json, strlen(json), tokens, sizeof(tokens) / sizeof(tokens[0]));
+    jsmn_parse(&parser, json, strlen(json), tokens, sizeof(tokens) / sizeof(tokens[0]));
 
-    if (num_tokens < 0) {
-        fprintf(stderr, "JSON parsing error: %d\n", num_tokens);
-        return -1;
-    }
+    // if (num_tokens < 0) {
+    //     fprintf(stderr, "JSON parsing error: %d\n", num_tokens);
+    //     return -1;
+    // }
 
     // Iterate through the tokens to find the key
-    for (int i = 1; i < num_tokens; i++) {
-      elog(LOG, "Size: %i, Start:%i, End: %i", tokens[i].size, tokens[i].start, tokens[i].end);
-    }
+    // for (int i = 1; i < num_tokens; i++) {
+    //  elog(LOG, "Size: %i, Start:%i, End: %i", tokens[i].size, tokens[i].start, tokens[i].end);
+    // }
 
     return 1;
 }
@@ -135,10 +135,10 @@ int json_get_value(const char* json, const char* key, char* value, int max_len) 
     // Parse the JSON string into tokens
     int num_tokens = jsmn_parse(&parser, json, strlen(json), tokens, sizeof(tokens) / sizeof(tokens[0]));
 
-    if (num_tokens < 0) {
-        fprintf(stderr, "JSON parsing error: %d\n", num_tokens);
-        return -1;
-    }
+    // if (num_tokens < 0) {
+    //     fprintf(stderr, "JSON parsing error: %d\n", num_tokens);
+    //     return -1;
+    // }
 
     // Iterate through the tokens to find the key
     for (int i = 1; i < num_tokens; i++) {
@@ -150,13 +150,13 @@ int json_get_value(const char* json, const char* key, char* value, int max_len) 
                 value[len] = '\0'; // Null-terminate the string
                 return 0; // Success
             } else {
-                fprintf(stderr, "Value is too long for the buffer\n");
+                // fprintf(stderr, "Value is too long for the buffer\n");
                 return -1;
             }
         }
     }
 
-    fprintf(stderr, "Key not found in JSON\n");
+    // fprintf(stderr, "Key not found in JSON\n");
     return -1; // Key not found
 }
 
@@ -169,12 +169,12 @@ int json_get_keys(const char* json, char* keys[], int max_keys) {
     int num_tokens = jsmn_parse(&parser, json, strlen(json), tokens, MAX_KEYS);
 
     if (num_tokens < 0) {
-        fprintf(stderr, "JSON parsing error: %d\n", num_tokens);
+        // fprintf(stderr, "JSON parsing error: %d\n", num_tokens);
         return -1;
     }
 
     if (num_tokens < 1 || tokens[0].type != JSMN_OBJECT) {
-        fprintf(stderr, "Top-level JSON data is not an object\n");
+        // fprintf(stderr, "Top-level JSON data is not an object\n");
         return -1;
     }
 
@@ -196,7 +196,7 @@ int json_get_keys(const char* json, char* keys[], int max_keys) {
             keys[key_count][len] = '\0';
             key_count++;
         } else {
-            fprintf(stderr, "Maximum number of keys reached\n");
+            // fprintf(stderr, "Maximum number of keys reached\n");
             break;
         }
     }
@@ -307,37 +307,37 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
                     ((unsigned char)buffer[1] << 8) |
                     ((unsigned char)buffer[2] << 16) |
                     ((unsigned char)buffer[3] << 24));
-    elog(LOG, "jsonMetadataSize: %i", jsonMetadataSize);
+   // elog(LOG, "jsonMetadataSize: %i", jsonMetadataSize);
 
     // Read jsonMetadataSize bytes to get jsonMetadata 
     buffer = readKBytes(filename, jsonMetadataSize, 4, 1);
     char * jsonMetadata = buffer;
     jsonMetadata[jsonMetadataSize] = '\0';
-    elog(LOG, "jsonMetadata: %s", jsonMetadata);
+   // elog(LOG, "jsonMetadata: %s", jsonMetadata);
 
     // Extract column metadata from jsonMetadata
     char columnMetadata[128 * 1000];
-    int ret = json_get_value(jsonMetadata, "Columns", columnMetadata, sizeof(columnMetadata));
-    columnMetadata[128 * 1000 + 1] = '\0';
-    elog(LOG, "Column metadata: %s", columnMetadata);
+    json_get_value(jsonMetadata, "Columns", columnMetadata, sizeof(columnMetadata));
+    // columnMetadata[128 * 1000 + 1] = '\0';
+    // elog(LOG, "Column metadata: %s", columnMetadata);
 
     char max_values_per_block_buffer[100];
-    ret = json_get_value(jsonMetadata, "Max Values Per Block", max_values_per_block_buffer, sizeof(max_values_per_block_buffer));
+    json_get_value(jsonMetadata, "Max Values Per Block", max_values_per_block_buffer, sizeof(max_values_per_block_buffer));
     int max_values_per_block = atoi(max_values_per_block_buffer);
     
     
     // Extract list of columns from columnMetadata
     char* columns[128 * 100]; // Array to store columns, adjust the size as needed
     column_count = json_get_keys(columnMetadata, columns, sizeof(columns));
-    if (column_count > 0) {
-            printf("List of columns:\n");
-            for (int i = 0; i < column_count; i++) {
-                printf("%d: %s\n", i + 1, columns[i]);
-            }
-        } else {
-            elog(LOG, "No columns found in JSON.\n");
+    // if (column_count > 0) {
+    //         printf("List of columns:\n");
+    //         for (int i = 0; i < column_count; i++) {
+    //             printf("%d: %s\n", i + 1, columns[i]);
+    //         }
+    //     } else {
+    //        elog(LOG, "No columns found in JSON.\n");
 
-    }
+    // }
 
     //int max_col_size = 0;
     // int cur_col_size = 0;
@@ -352,17 +352,17 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
     for (int i = 0; i < column_count; i++) {
 
         json_get_value(columnMetadata, columns[i], cur_col_metadata_buffer, sizeof(cur_col_metadata_buffer));
-        elog(LOG, "cur_col_metadata_buffer %s", cur_col_metadata_buffer);
+       // elog(LOG, "cur_col_metadata_buffer %s", cur_col_metadata_buffer);
         json_get_value(cur_col_metadata_buffer, "num_blocks", cur_col_numblocks_buffer, sizeof(cur_col_numblocks_buffer));
-        elog(LOG, "cur_col_numblocks_buffer %s", cur_col_numblocks_buffer);
+       // elog(LOG, "cur_col_numblocks_buffer %s", cur_col_numblocks_buffer);
         colnumblocks[i] = atoi(cur_col_numblocks_buffer);
         json_get_value(cur_col_metadata_buffer, "start_offset", cur_col_offset_buffer, sizeof(cur_col_offset_buffer));
-        elog(LOG, "cur_col_offset_buffer %s", cur_col_offset_buffer);
+       // elog(LOG, "cur_col_offset_buffer %s", cur_col_offset_buffer);
         coloffsets[i] = atoi(cur_col_offset_buffer);
         json_get_value(cur_col_metadata_buffer, "block_stats", cur_col_blockstats_buffer, sizeof(cur_col_blockstats_buffer));
-        elog(LOG, "cur_col_blockstats_buffer %s", cur_col_blockstats_buffer);
+       // elog(LOG, "cur_col_blockstats_buffer %s", cur_col_blockstats_buffer);
         json_get_value(cur_col_metadata_buffer, "type", cur_col_type_buffer, sizeof(cur_col_type_buffer));
-        elog(LOG, "cur_col_type_buffer %s", cur_col_type_buffer);
+       // elog(LOG, "cur_col_type_buffer %s", cur_col_type_buffer);
         if(strcmp(cur_col_type_buffer, "str") == 0){
             coltypes[i] = 0;
             coltypesizes[i] = 32;
@@ -377,15 +377,11 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
         }
         
         json_get_value(cur_col_metadata_buffer, reverseAtoi(colnumblocks[i] - 1), cur_col_last_block_buffer, sizeof(cur_col_last_block_buffer));
-        elog(LOG, "cur_col_last_block_buffer %s", cur_col_last_block_buffer);
+       // elog(LOG, "cur_col_last_block_buffer %s", cur_col_last_block_buffer);
         json_get_value(cur_col_last_block_buffer, "num", cur_col_last_block_nums_buffer, sizeof(cur_col_last_block_nums_buffer));
-        elog(LOG, "cur_col_last_block_nums_buffer %s", cur_col_last_block_nums_buffer);
+       // elog(LOG, "cur_col_last_block_nums_buffer %s", cur_col_last_block_nums_buffer);
 
         colnumrecords[i] = (colnumblocks[i] - 1) * max_values_per_block + atoi(cur_col_last_block_nums_buffer);
-        // cur_col_size = colnumrecords[i] * coltypesizes[i] ;
-        // if(max_col_size < cur_col_size){
-        //     max_col_size = cur_col_size;
-        // }
     }
     
 
@@ -394,7 +390,7 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
     for (int i = 0; i < column_count; i++) {
         file_data[i] = readKBytes(filename,  colnumrecords[i] * coltypesizes[i], coloffsets[i], 0);
     }
-    elog(LOG, "Successfully read the file");
+   // elog(LOG, "Successfully read the file");
     rowsRead = 0;
 
 
@@ -411,7 +407,7 @@ extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
 
     TupleTableSlot * slot = node->ss.ss_ScanTupleSlot;
     if (rowsRead == colnumrecords[0]) {
-        elog(LOG, "No More rows");
+       // elog(LOG, "No More rows");
         return NULL;
     }
 
@@ -447,7 +443,7 @@ extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
         }
 
     }
-    elog(LOG, "rowsRead: %i/%i", rowsRead, colnumrecords[0]);
+   // elog(LOG, "rowsRead: %i/%i", rowsRead, colnumrecords[0]);
     ExecStoreVirtualTuple(slot);
     rowsRead++;
     return slot;
