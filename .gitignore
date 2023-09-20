@@ -46,3 +46,8 @@ lib*.pc
 # CMU-DB
 .idea
 /build
+data-chickens.csv
+data-chickens.db721
+data-farms.csv
+data-farms.db721
+cmudb/extensions/db721_fdw/project1.zip
