@@ -28,6 +28,9 @@ extern "C" {
 #include "../../../../src/include/utils/lsyscache.h"
 
 #include "../../../../src/include/optimizer/restrictinfo.h"
+#include "../../../../src/include/nodes/print.h"
+#include "utils/lsyscache.h"
+
 
 
 }
@@ -46,6 +49,7 @@ int coltypesizes[MAX_COLUMNS];
 int colnumblocks[MAX_COLUMNS];
 int colnumrecords[MAX_COLUMNS];
 int coloffsets[MAX_COLUMNS];
+List *global_scan_clauses;
 
 
 
@@ -312,8 +316,8 @@ extern "C" ForeignScan *
 db721_GetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid,
                    ForeignPath *best_path, List *tlist, List *scan_clauses,
                    Plan *outer_plan) {    
-    scan_clauses = extract_actual_clauses(scan_clauses, false);   
-    ForeignScan *fscan = make_foreignscan(tlist, scan_clauses, baserel->relid, NIL, NIL, NIL, NULL, outer_plan);
+    global_scan_clauses = extract_actual_clauses(scan_clauses, false);   
+    ForeignScan *fscan = make_foreignscan(tlist, NIL, baserel->relid, NIL, NIL, NIL, NIL, outer_plan);
 //    elog(LOG, "Node Type: %s", nodeToString(fscan));
 
 
@@ -432,11 +436,138 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
 
 }
 
+bool EvaluateOperator(Oid type_oid, Datum left, Datum right, Oid operator_oid)
+{
+    TypeCacheEntry *typcache = lookup_type_cache(type_oid, TYPECACHE_CMP_PROC_FINFO);
+
+    if (typcache != NULL)
+    {
+        /* Call the operator function for the data type */
+        FmgrInfo flinfo;
+        bool result;
+
+        fmgr_info_cxt(get_opcode(operator_oid), &flinfo, CurrentMemoryContext);
+
+        /* Invoke the operator function */
+        result = DatumGetBool(FunctionCall2Coll(&flinfo, typcache->typcollation, left, right));
+
+        return result;
+    }
+    else
+    {
+        elog(ERROR, "Operator not found for data type with OID: %u", type_oid);
+        return false; // Or handle the error as needed
+    }
+}
+
+
+
+
+
+
+bool eval_condition(Expr *clause) {
+     
+
+    // char* buffer = getElements(file_data[i], rowsRead * coltypesizes[i], coltypesizes[i]);
+    // pprint(clause);
+
+    OpExpr *opexpr = (OpExpr *)clause;
+    Var *left;
+    Const *right;
+    if IsA((Node *)linitial(opexpr->args), Const) {
+        left = (Var *)lsecond(opexpr->args);  
+        right = (Const *)linitial(opexpr->args);
+
+    }
+    else {
+        left = (Var *)linitial(opexpr->args);
+        right = (Const *)lsecond(opexpr->args);
+    }
+
+    // Oid left_type = exprType(left);
+    // Oid right_type = exprType(right);
+    Oid operator_oid = opexpr->opno;
+    Oid left_type;
+    // char *opname = get_opname(operator_oid);
+
+    int column_number;
+    if IsA(left, RelabelType) {
+        RelabelType *new_left = (RelabelType *)left;
+        Node *arg_node = (Node *)new_left->arg;
+        left = (Var *)arg_node;
+    }
+    left_type = left->vartype;
+    column_number = left->varattno - 1;
+
+   
+    // elog(LOG, "Column type is %d", left_type);
+    // elog(LOG, "Column number is %d", column_number);
+
+    
+    Datum columnVal;
+    char* buffer = getElements(file_data[column_number], rowsRead * coltypesizes[column_number], coltypesizes[column_number]);
+    if (coltypes[column_number] == 0) {
+        columnVal = CStringGetTextDatum(buffer);
+    }
+    else if (coltypes[column_number] == 1) {
+        int intData = (int)((unsigned char)buffer[0] |
+            ((unsigned char)buffer[1] << 8) |
+            ((unsigned char)buffer[2] << 16) |
+            ((unsigned char)buffer[3] << 24));
+        columnVal = Int32GetDatum(intData);
+        // slot->tts_isnull[column_number] = true;
+    }
+    else if (coltypes[column_number] == 2) {
+        union {
+            char bytes[4];
+            float floatValue;
+        } data;
+        
+        for (int i = 0; i < 4; i++) {
+            data.bytes[i] = buffer[i];
+        }
+        columnVal = Float4GetDatum(data.floatValue);
+        //slot->tts_isnull[column_number] = true;
+    }
+    // else {
+    //     columnVal = NULL;
+    // }
+
+
+
+
+    bool result = EvaluateOperator(left_type, columnVal,  right->constvalue , operator_oid);
+    return result;
+}
+
+
+
+
+
 extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
 
     // elog(LOG, "ITERATING FOREIGN SCAN");
 
     TupleTableSlot * slot = node->ss.ss_ScanTupleSlot;
+    ListCell *lc;
+    lc = list_head(global_scan_clauses); 
+    bool meets_filters;
+    while (lc != NULL && rowsRead < colnumrecords[0]) {
+        Expr *clause = (Expr *)lfirst(lc);
+        meets_filters = eval_condition(clause);
+        if (!meets_filters) {
+            rowsRead++;
+            lc = list_head(global_scan_clauses);
+            // elog(LOG, "Condition Met");
+        } else {
+            lc = lnext(global_scan_clauses, lc);
+            // elog(LOG, "Condition NOT Met");
+        }
+    }
+
+    // elog(LOG, "EXIT LOOP");
+
+
     if (rowsRead == colnumrecords[0]) {
        // elog(LOG, "No More rows");
         return NULL;
@@ -486,5 +617,5 @@ extern "C" void db721_ReScanForeignScan(ForeignScanState *node) {
 }
 
 extern "C" void db721_EndForeignScan(ForeignScanState *node) {
-  // TODO(721): Write me!
+//   free(file_data);
 }
