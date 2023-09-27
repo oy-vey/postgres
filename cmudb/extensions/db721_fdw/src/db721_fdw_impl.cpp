@@ -13,6 +13,22 @@ extern "C" {
 #include "../../../../src/include/optimizer/pathnode.h"
 #include "../../../../src/include/optimizer/planmain.h"
 #include "../../../../src/include/utils/builtins.h"
+#include "../../../../src/include/access/sdir.h"
+#include "../../../../src/include/access/stratnum.h"
+#include "../../../../src/include/lib/stringinfo.h"
+#include "../../../../src/include/nodes/bitmapset.h"
+#include "../../../../src/include/nodes/lockoptions.h"
+#include "../../../../src/include/nodes/parsenodes.h"
+#include "../../../../src/include/nodes/primnodes.h"
+#include "../../../../src/include/nodes/nodeFuncs.h"
+#include "../../../../src/include/nodes/execnodes.h"
+
+#include "../../../../src/include/utils/elog.h"
+#include "../../../../src/include/utils/typcache.h"
+#include "../../../../src/include/utils/lsyscache.h"
+
+#include "../../../../src/include/optimizer/restrictinfo.h"
+
 
 }
 // clang-format on
@@ -295,9 +311,22 @@ extern "C" void db721_GetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
 extern "C" ForeignScan *
 db721_GetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid,
                    ForeignPath *best_path, List *tlist, List *scan_clauses,
-                   Plan *outer_plan) {
-  return make_foreignscan(tlist, scan_clauses, baserel->relid, NIL, NIL, NIL,
-                          NIL, outer_plan);
+                   Plan *outer_plan) {    
+    scan_clauses = extract_actual_clauses(scan_clauses, false);   
+    ForeignScan *fscan = make_foreignscan(tlist, scan_clauses, baserel->relid, NIL, NIL, NIL, NULL, outer_plan);
+//    elog(LOG, "Node Type: %s", nodeToString(fscan));
+
+
+    // ListCell *lc;
+    // foreach (lc, scan_clauses) {
+    //     Expr *clause = (Expr *)lfirst(lc);
+    //     translate_clause_to_filter(clause);
+    //     elog(LOG, "GetForeignPlan clause: %s", nodeToString(clause));
+    // }
+
+
+
+   return fscan;    
 }
 
 extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
@@ -307,7 +336,7 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
                     ((unsigned char)buffer[1] << 8) |
                     ((unsigned char)buffer[2] << 16) |
                     ((unsigned char)buffer[3] << 24));
-   // elog(LOG, "jsonMetadataSize: %i", jsonMetadataSize);
+   // elog(LOG, "BIGINNING FOREIGN SCAN");
 
     // Read jsonMetadataSize bytes to get jsonMetadata 
     buffer = readKBytes(filename, jsonMetadataSize, 4, 1);
@@ -404,6 +433,8 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
 }
 
 extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
+
+    // elog(LOG, "ITERATING FOREIGN SCAN");
 
     TupleTableSlot * slot = node->ss.ss_ScanTupleSlot;
     if (rowsRead == colnumrecords[0]) {
