@@ -17,4 +17,4 @@ select identifier, age_weeks, farm_name from db721_chicken where farm_name < 'bo
 select identifier, age_weeks, farm_name from db721_chicken where sex = 'FEMALE' and age_weeks > 5 and identifier > 10 order by 1;
 select identifier, farm_name from db721_chicken where sex = 'FEMALE' and age_weeks > 52 order by 1;
 select count(*) from db721_chicken where sex = 'MALE' and age_weeks > 5 and weight_g > 1500 order by 1;
-select c.farm_name from db721_chicken c, db721_farm f where c.notes = 'WOODY' and c.farm_name = f.farm_name group by c.farm_name order by 1;
+select c.farm_name from db721_farm f, db721_chicken c where c.notes = 'WOODY' and c.farm_name = f.farm_name group by c.farm_name order by 1;
