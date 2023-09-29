@@ -52,7 +52,7 @@ int coltypesizes[MAX_RELATIONS][MAX_COLUMNS];
 int colnumblocks[MAX_RELATIONS][MAX_COLUMNS];
 int colnumrecords[MAX_RELATIONS][MAX_COLUMNS];
 int coloffsets[MAX_RELATIONS][MAX_COLUMNS];
-List *global_scan_clauses;
+List *global_scan_clauses[MAX_RELATIONS];
 
 /* FDW-specific context to hold data for each relation */
 typedef struct {
@@ -286,6 +286,26 @@ char* getElements(char* array, int offset, int k) {
     return result;
 }
 
+
+/* Function to recursively extract expressions from ExprState */
+static void extractExprsFromState(ExprState *estate, List **exprList)
+{
+    if (estate == NULL)
+        return;
+
+    /* Check if the current ExprState has an associated expression */
+    if (estate->expr)
+    {
+        /* Add the associated expression to the list */
+        // *exprList = lappend(*exprList, estate->expr);
+        *exprList = list_concat(*exprList, list_make1(estate->expr));
+
+    }
+
+    /* Recursively process child states */
+    extractExprsFromState(estate->parent->qual, exprList);
+}
+
 extern "C" void db721_GetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
                                       Oid foreigntableid) {
 }
@@ -306,8 +326,11 @@ extern "C" ForeignScan *
 db721_GetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid,
                    ForeignPath *best_path, List *tlist, List *scan_clauses,
                    Plan *outer_plan) {    
-    global_scan_clauses = extract_actual_clauses(scan_clauses, false);
-    ForeignScan *fscan = make_foreignscan(tlist, NIL, baserel->relid, NIL, NIL, NIL, NIL, outer_plan);
+    // global_scan_clauses = extract_actual_clauses(scan_clauses, false);
+
+    // printf("Baserelid: %i\n", foreigntableid);
+    // pprint(global_scan_clauses);
+    ForeignScan *fscan = make_foreignscan(tlist, NIL, baserel->relid, NIL, NIL, NIL, extract_actual_clauses(scan_clauses, false), outer_plan);
 //    elog(LOG, "Node Type: %s", nodeToString(fscan));
 
 
@@ -347,7 +370,13 @@ extern "C" void db721_BeginForeignScan(ForeignScanState *node, int eflags) {
     node->fdw_state = (void *)fdw_state;
     numRelations++;
 
-    // elog(LOG, "BeginForeignScan - this is relation: %i", numRelations - 1);
+    List * recheck_exprs = NIL;
+    extractExprsFromState(node->fdw_recheck_quals, &recheck_exprs);
+    global_scan_clauses[fdw_state->current_relation] = recheck_exprs;
+    // printf("Relation # %i\n", fdw_state->current_relation);
+    // pprint(global_scan_clauses[fdw_state->current_relation]);
+
+    // elog(LOG, "relation: %i, foreigntableid: %i", numRelations - 1, foreigntableid);
 
     // Read last 4 bytes to get jsonMetadataSize 
     char * buffer = readKBytes(filename[fdw_state->current_relation], 4, 0, 1);
@@ -486,18 +515,20 @@ bool eval_condition(Expr *clause, int curRelation) {
 
     // char* buffer = getElements(file_data[fdw_state->current_relation][i], rowsRead[fdw_state->current_relation] * coltypesizes[i], coltypesizes[i]);
     // pprint(clause);
-
+    // printf("Win");
     OpExpr *opexpr = (OpExpr *)clause;
     Var *left;
     Const *right;
+    // printf("Win 2");
     if IsA((Node *)linitial(opexpr->args), Const) {
         left = (Var *)lsecond(opexpr->args);  
         right = (Const *)linitial(opexpr->args);
-
+        // printf("Win 3");
     }
     else {
         left = (Var *)linitial(opexpr->args);
         right = (Const *)lsecond(opexpr->args);
+        // printf("Win 4");
     }
 
     // Oid left_type = exprType(left);
@@ -505,7 +536,7 @@ bool eval_condition(Expr *clause, int curRelation) {
     Oid operator_oid = opexpr->opno;
     Oid left_type;
     // char *opname = get_opname(operator_oid);
-
+    // printf("Win 5 ");
     int column_number;
     if IsA(left, RelabelType) {
         RelabelType *new_left = (RelabelType *)left;
@@ -571,20 +602,33 @@ extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
 
     TupleTableSlot * slot = node->ss.ss_ScanTupleSlot;
     ListCell *lc;
-    lc = list_head(global_scan_clauses); 
+    List * new_clauses;
+    if (global_scan_clauses[fdw_state->current_relation] != NULL) {
+        new_clauses = (List *)lfirst(list_head(global_scan_clauses[fdw_state->current_relation]));
+        lc = list_head(new_clauses);
+    }
+    else {
+        new_clauses = NULL;
+        lc = NULL;
+    }
+    
+    // pprint(new_clauses);
+   
     bool meets_filters;
     while (lc != NULL && rowsRead[fdw_state->current_relation] < colnumrecords[fdw_state->current_relation][0]) {
         Expr *clause = (Expr *)lfirst(lc);
-        pprint(clause);
+        // elog(LOG, "IterateForeignScan - this is relation: %i", fdw_state->current_relation);
+        // pprint(clause);
         meets_filters = eval_condition(clause, fdw_state->current_relation);
         if (!meets_filters) {
             rowsRead[fdw_state->current_relation]++;
-            lc = list_head(global_scan_clauses);
+            lc = list_head(new_clauses);
             // elog(LOG, "Condition Met");
         } else {
-            lc = lnext(global_scan_clauses, lc);
-            printf("Skipping row for relation %i : %i/%i\n", fdw_state->current_relation, rowsRead[fdw_state->current_relation], colnumrecords[fdw_state->current_relation][0]);
+            lc = lnext(new_clauses, lc);
+            // printf("Skipping row for relation %i : %i/%i\n", fdw_state->current_relation, rowsRead[fdw_state->current_relation], colnumrecords[fdw_state->current_relation][0]);
         }
+
     }
 
     // elog(LOG, "EXIT LOOP");
@@ -627,7 +671,7 @@ extern "C" TupleTableSlot *db721_IterateForeignScan(ForeignScanState *node) {
         }
 
     }
-    printf("rowsRead for relation %i : %i/%i\n", fdw_state->current_relation, rowsRead[fdw_state->current_relation], colnumrecords[fdw_state->current_relation][0]);
+    // printf("rowsRead for relation %i : %i/%i\n", fdw_state->current_relation, rowsRead[fdw_state->current_relation], colnumrecords[fdw_state->current_relation][0]);
     ExecStoreVirtualTuple(slot);
     rowsRead[fdw_state->current_relation]++;
     return slot;
